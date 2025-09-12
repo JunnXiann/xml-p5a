@@ -87,12 +87,52 @@ def extract_info(xml_file):
     providers = [match.strip() for match in matched_providers if match.strip()]
     return ','.join(values), ','.join(providers)
 
+def normalize_identifier(identifier):
+    """
+    Converts:
+    - Y14n0014      -> Y14
+    - ZW14n0014     -> ZW14
+    - P185n1617     -> P1617
+    - ZW09n0073a    -> ZW0073a
+    - ZW12na072     -> ZWa072
+    (No zero-padding)
+    """
+    match = re.match(r'^([A-Z]{1,2})\d*n([a-zA-Z]?\d+[a-zA-Z]?)$', identifier)
+    if match:
+        prefix = match.group(1)
+        rest = match.group(2)
+        m2 = re.match(r'^([a-zA-Z]?)(\d+)([a-zA-Z]?)$', rest)
+        if m2:
+            letter1 = m2.group(1)
+            digits = m2.group(2)
+            letter2 = m2.group(3)
+            return f"{prefix}{letter1}{digits}{letter2}"
+    return identifier
+
+def scan_and_extract(xml_base_path):
+    records = []
+    for root, dirs, files in os.walk(xml_base_path):
+        for file in files:
+            if file.endswith('.xml'):
+                xml_path = os.path.join(root, file)
+                identifier = os.path.splitext(file)[0]
+                norm_id = normalize_identifier(identifier)
+                punc_value, provider = extract_info(xml_path)
+                records.append({
+                    'CBETA经编码': norm_id,
+                    '标点类型': punc_value,
+                    '标点来源': provider,
+                    'xml文件名': file
+                })
+    return records
+
 # Example usage
 if __name__ == "__main__":
     # Set your paths here
-    excel_file_path = "径山藏对应CBETA经编码-0906.xlsx" 
-    xml_repository_path = "." 
+    # excel_file_path = "径山藏对应CBETA经编码-0906.xlsx" 
+    xml_repository_path = "."
+    output_excel = "cbetaxml.xlsx"
 
-    identifier_column_name = "CBETA经编码" 
-
-    result = process_excel_file(excel_file_path, xml_repository_path, identifier_column_name)
+    result = scan_and_extract(xml_repository_path)
+    df = pd.DataFrame(result)
+    df.to_excel(output_excel, index=False)
